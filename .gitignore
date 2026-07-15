@@ -3,3 +3,4 @@ cache/
 broadcast/
 lib/
 .env
+script/local/
