@@ -29,6 +29,13 @@ git clone --depth 1 https://github.com/foundry-rs/forge-std lib/forge-std
 forge test
 ```
 
+## Deployments — Robinhood Chain (4663)
+
+| Instance | Address | Parameters |
+|---|---|---|
+| Friar (standard) | `0xFeDa24F0d3805170E7566cE617CfBa01cE05D080` | baseFactor 5000, filter 10, decay 600, reduction 5000, vfc 40000, maxVolAcc 350000 |
+| Friar (calm) | `0x5E6b0bbc811705b8d8234e9914c0507243fB1080` | same, vfc 20000 |
+
 ## License
 
 MIT — fee mechanism ported from [Liquidity Book](https://github.com/lfj-gg/joe-v2) (MIT).
