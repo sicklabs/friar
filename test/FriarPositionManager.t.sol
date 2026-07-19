@@ -206,7 +206,7 @@ contract FriarPositionManagerTest is Test, Deployers {
         fpm.open(
             key,
             bins,
-            FriarPositionManager.SwapIn({enabled: true, venue: key, zeroForOne: false, amountIn: 1e18, minAmountOut: 1e17}),
+            FriarPositionManager.SwapIn({enabled: true, venue: key, zeroForOne: false, amountIn: 1e18, minAmountOut: 1e17, sqrtPriceLimitX96: 0}),
             type(uint256).max,
             type(uint256).max
         );
@@ -228,11 +228,55 @@ contract FriarPositionManagerTest is Test, Deployers {
                 venue: key,
                 zeroForOne: false,
                 amountIn: 1e18,
-                minAmountOut: type(uint128).max
+                minAmountOut: type(uint128).max,
+                sqrtPriceLimitX96: 0
             }),
             type(uint256).max,
             type(uint256).max
         );
+    }
+
+    /// The whole point of the sync: an EMPTY pool stuck at a stale price gets slid to the
+    /// live market price by a price-limited swap, then the position mints at market — all in
+    /// one atomic open. Empty ⇒ nothing to trade against ⇒ the price moves to the limit for
+    /// ~free (0 tokens), which is why this beats requiring the pool to already have liquidity.
+    function test_swapIn_syncsEmptyPoolToMarket() public {
+        PoolKey memory sk = _freshKey(); // distinct, uninitialized pool
+        manager.initialize(sk, SQRT_PRICE_2_1); // ghost pool stuck at price 2.0 (tick ~6931)
+        assertEq(manager.getLiquidity(sk.toId()), 0, "pool starts empty");
+        (uint160 sBefore,,,) = manager.getSlot0(sk.toId());
+        assertEq(sBefore, SQRT_PRICE_2_1, "starts stale");
+
+        // open: slide the empty pool DOWN to the market price (tick 0) via the price limit,
+        // then mint a two-sided position there. amountIn is nominal — nothing is consumed.
+        FriarPositionManager.Bin[] memory bins = new FriarPositionManager.Bin[](2);
+        bins[0] = FriarPositionManager.Bin(-120, -60, 5e18); // bid, below market tick
+        bins[1] = FriarPositionManager.Bin(60, 120, 5e18); // ask, above market tick
+
+        vm.prank(alice);
+        uint256 id = fpm.open(
+            sk,
+            bins,
+            FriarPositionManager.SwapIn({
+                enabled: true,
+                venue: sk,
+                zeroForOne: true,
+                amountIn: 1,
+                minAmountOut: 0,
+                sqrtPriceLimitX96: SQRT_PRICE_1_1
+            }),
+            type(uint256).max,
+            type(uint256).max
+        );
+
+        (uint160 sAfter, int24 tickAfter,,) = manager.getSlot0(sk.toId());
+        // sqrtPrice is the authoritative check — it lands EXACTLY on the limit. The tick can
+        // read one below when a downward swap stops precisely on a tick boundary (Uniswap
+        // quirk); a 1-tick offset is absorbed by the 100-spacing bins.
+        assertEq(sAfter, SQRT_PRICE_1_1, "pool synced to market price (the limit)");
+        assertApproxEqAbs(int256(tickAfter), int256(0), 1, "synced to ~market tick (boundary +/-1)");
+        (address owner,,) = fpm.getPosition(id);
+        assertEq(owner, alice, "position created at the synced market price");
     }
 
     // ----------------------------------------------------------------- perf fee

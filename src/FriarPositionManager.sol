@@ -79,6 +79,10 @@ contract FriarPositionManager is IUnlockCallback {
         bool zeroForOne;
         uint256 amountIn;
         uint256 minAmountOut;
+        // 0 = swap the whole `amountIn` (limit at MIN/MAX, legacy behavior). Non-zero =
+        // stop the swap at this sqrt price. Lets an open first slide a stale/empty pool to
+        // the live market price (an empty pool moves to the limit for ~free) before minting.
+        uint160 sqrtPriceLimitX96;
     }
 
     /// @dev Exit swap: convert the whole positive credit of the input side to the other
@@ -450,7 +454,9 @@ contract FriarPositionManager is IUnlockCallback {
                 SwapParams({
                     zeroForOne: op.swapIn.zeroForOne,
                     amountSpecified: -int256(op.swapIn.amountIn),
-                    sqrtPriceLimitX96: op.swapIn.zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
+                    sqrtPriceLimitX96: op.swapIn.sqrtPriceLimitX96 != 0
+                        ? op.swapIn.sqrtPriceLimitX96
+                        : (op.swapIn.zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1)
                 }),
                 ""
             );
